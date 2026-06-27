@@ -62,7 +62,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       
       if (faces.isEmpty) throw Exception("No face detected. Please try again.");
       
-      final embedding = await _mlService.generateEmbedding(faces.first);
+      // DeepFAS (Anti-Spoofing) Check
+      if (!_mlService.isLive(faces.first)) {
+        throw Exception("Spoofing detected or poor quality. Please keep your eyes open and look straight.");
+      }
+      
+      final embedding = await _mlService.generateEmbedding(image.path, faces.first);
       
       final endpoint = action == 'Register' ? '/attendance/register' : '/attendance/verify';
       final response = await http.post(

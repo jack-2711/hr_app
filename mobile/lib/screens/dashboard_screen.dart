@@ -284,12 +284,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _buildActionCard(context, 'Attendance', LucideIcons.scan_face, Colors.blue, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AttendanceScreen()))),
             _buildActionCard(context, 'Apply Leave', LucideIcons.calendar_plus, Colors.orange, () => _showLeaveDialog()),
             if (isHr) ...[
-              _buildActionCard(context, 'HR Dashboard', LucideIcons.layout_dashboard, Colors.cyan, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HRDashboardScreen()))),
-              _buildActionCard(context, 'Employees', LucideIcons.users, Colors.purple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HREmployeesScreen()))),
-              _buildActionCard(context, 'Leave Requests', LucideIcons.calendar_check, Colors.green, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HRLeavesScreen()))),
-              _buildActionCard(context, 'Timesheets', LucideIcons.history, Colors.blueGrey, () => Navigator.push(context, MaterialPageRoute(builder: (_) => HRTimesheetsScreen(userId: userId, userRole: _userRole)))),
-              _buildActionCard(context, 'Payroll', LucideIcons.banknote, Colors.teal, () => Navigator.push(context, MaterialPageRoute(builder: (_) => HRPayrollScreen(userId: userId, userRole: _userRole)))),
-              _buildActionCard(context, 'Settings', LucideIcons.settings, Colors.grey, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HRSettingsScreen()))),
+              _buildActionCard(context, 'HR Dashboard', LucideIcons.layout_dashboard, Colors.cyan, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HRDashboardScreen())).then((_) => _loadData())),
+              _buildActionCard(context, 'Employees', LucideIcons.users, Colors.purple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HREmployeesScreen())).then((_) => _loadData())),
+              _buildActionCard(context, 'Leave Requests', LucideIcons.calendar_check, Colors.green, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HRLeavesScreen())).then((_) => _loadData())),
+              _buildActionCard(context, 'Timesheets', LucideIcons.history, Colors.blueGrey, () => Navigator.push(context, MaterialPageRoute(builder: (_) => HRTimesheetsScreen(userId: userId, userRole: _userRole))).then((_) => _loadData())),
+              _buildActionCard(context, 'Payroll', LucideIcons.banknote, Colors.teal, () => Navigator.push(context, MaterialPageRoute(builder: (_) => HRPayrollScreen(userId: userId, userRole: _userRole))).then((_) => _loadData())),
+              _buildActionCard(context, 'Settings', LucideIcons.settings, Colors.grey, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HRSettingsScreen())).then((_) => _loadData())),
             ],
             if (!isHr) ...[
               _buildActionCard(context, 'My Timesheet', LucideIcons.history, Colors.blueGrey, () => Navigator.push(context, MaterialPageRoute(builder: (_) => HRTimesheetsScreen(userId: userId, userRole: _userRole)))),
