@@ -22,6 +22,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool _isProcessing = false;
   String _statusMessage = 'Align your face in the camera';
   bool _isRegistered = false;
+  String _shiftState = 'not_started';
+  String _challenge = 'smile';
   String? _userId;
 
   @override
@@ -34,12 +36,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final prefs = await SharedPreferences.getInstance();
     _userId = prefs.getString('user_id');
     
-    // Check registration status from backend
+    // Check registration status and shift state from backend
     try {
       final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/employee/$_userId/stats'));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _isRegistered = data['isRegistered'] ?? false;
+        _shiftState = data['shiftState'] ?? 'not_started';
+        _randomizeChallenge();
       }
     } catch (_) {}
 
@@ -49,6 +53,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     await _cameraController!.initialize();
     await _mlService.initialize();
     if (mounted) setState(() {});
+  }
+
+  void _randomizeChallenge() {
+    _challenge = (DateTime.now().second % 2 == 0) ? 'smile' : 'blink';
+    _statusMessage = _isRegistered ? 'Align your face and $_challenge' : 'Face registration required before using attendance.';
   }
 
   Future<void> _executeAction(String action) async {
@@ -66,8 +75,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (faces.isEmpty) throw Exception("No face detected. Please try again.");
       
       final face = faces.first;
-      if (face.smilingProbability != null && face.smilingProbability! < 0.4) {
-          throw Exception("Liveness check failed: Please smile while pressing the button.");
+      
+      if (_challenge == 'smile') {
+        if (face.smilingProbability == null || face.smilingProbability! < 0.4) {
+          throw Exception("Liveness check failed: Please smile.");
+        }
+      } else {
+        if (face.leftEyeOpenProbability == null || face.leftEyeOpenProbability! > 0.2 || 
+            face.rightEyeOpenProbability == null || face.rightEyeOpenProbability! > 0.2) {
+          throw Exception("Liveness check failed: Please blink (close your eyes).");
+        }
       }
 
       final embedding = await _mlService.generateEmbedding(face);
@@ -112,18 +129,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (response.statusCode == 200) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'] ?? 'Success'), backgroundColor: Colors.green));
-        if (action == 'Register') {
-           setState(() => _isRegistered = true);
-        } else {
-           Navigator.pop(context);
-        }
+        await _initialize(); // Refresh state after action
       } else {
         throw Exception(result['error'] ?? 'Operation failed');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
-        setState(() => _statusMessage = 'Try again');
+        _randomizeChallenge();
       }
     } finally {
       if (mounted) setState(() => _isProcessing = false);
@@ -175,24 +188,34 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       label: const Text('REGISTER FACE'),
                       style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 56)),
                     )
+                  else if (_shiftState == 'completed')
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text('You have already Clocked In today. Attendance completed.', textAlign: TextAlign.center, style: TextStyle(color: Colors.green, fontSize: 16)),
+                    )
                   else
                     Column(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(child: _attendanceBtn('Clock In', Colors.green, Icons.login)),
-                            const SizedBox(width: 12),
-                            Expanded(child: _attendanceBtn('Break In', Colors.orange, Icons.coffee)),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(child: _attendanceBtn('Break Out', Colors.orangeAccent, Icons.work)),
-                            const SizedBox(width: 12),
-                            Expanded(child: _attendanceBtn('Clock Out', Colors.red, Icons.logout)),
-                          ],
-                        ),
+                        if (_shiftState == 'not_started')
+                          Row(
+                            children: [
+                              Expanded(child: _attendanceBtn('Clock In', Colors.green, Icons.login)),
+                            ],
+                          ),
+                        if (_shiftState == 'working')
+                          Row(
+                            children: [
+                              Expanded(child: _attendanceBtn('Break Out', Colors.orangeAccent, Icons.coffee_outlined)),
+                              const SizedBox(width: 12),
+                              Expanded(child: _attendanceBtn('Clock Out', Colors.red, Icons.logout)),
+                            ],
+                          ),
+                        if (_shiftState == 'on_break')
+                          Row(
+                            children: [
+                              Expanded(child: _attendanceBtn('Break In', Colors.orange, Icons.work)),
+                            ],
+                          ),
                       ],
                     ),
                 ],

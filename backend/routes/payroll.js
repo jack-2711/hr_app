@@ -41,7 +41,7 @@ router.get('/:month', async (req, res) => {
 // POST /api/payroll/generate
 router.post('/generate', async (req, res) => {
   try {
-    const { selectedMonth, allowances } = req.body;
+    const { selectedMonth, allowances, employeeId } = req.body;
     const [yearStr, monthStr] = selectedMonth.split('-');
     const year = parseInt(yearStr);
     const month = parseInt(monthStr) - 1;
@@ -49,11 +49,12 @@ router.post('/generate', async (req, res) => {
     const endOfMonth = new Date(year, month + 1, 0);
     const startOfYear = new Date(year, 0, 1);
 
-    // Fetch all employees (exclude sentinel)
-    const { data: employees } = await supabase
-      .from('profiles')
-      .select('*')
-      .neq('id', SENTINEL_ID);
+    // Fetch employees
+    let employeesQuery = supabase.from('profiles').select('*').neq('id', SENTINEL_ID);
+    if (employeeId) {
+      employeesQuery = employeesQuery.eq('id', employeeId);
+    }
+    const { data: employees } = await employeesQuery;
 
     // Fetch approved leaves for the year up to the selected month
     const { data: leaves } = await supabase
@@ -84,6 +85,20 @@ router.post('/generate', async (req, res) => {
       previousLopDeducted[p.employee_id] =
         (previousLopDeducted[p.employee_id] || 0) +
         Number(p.lop_days_counted || 0);
+    });
+
+    // Fetch current month's generated payrolls to determine last paid date
+    const { data: currentMonthPayrolls } = await supabase
+      .from('payroll')
+      .select('employee_id, created_at')
+      .eq('billing_month', selectedMonth)
+      .order('created_at', { ascending: false });
+
+    const lastPaidDate = {};
+    currentMonthPayrolls?.forEach((p) => {
+      if (!lastPaidDate[p.employee_id]) {
+        lastPaidDate[p.employee_id] = new Date(p.created_at);
+      }
     });
 
     // Half-day penalties from late arrivals
@@ -182,12 +197,12 @@ router.post('/generate', async (req, res) => {
         ? new Date(emp.last_working_day)
         : null;
 
-      let calcStartDay =
-        joinDate &&
-        joinDate.getFullYear() === year &&
-        joinDate.getMonth() === month
-          ? joinDate.getDate()
-          : 1;
+      let calcStartDay = 1;
+      if (lastPaidDate[emp.id]) {
+        calcStartDay = lastPaidDate[emp.id].getDate() + 1; // Start from day after last generated payslip
+      } else if (joinDate && joinDate.getFullYear() === year && joinDate.getMonth() === month) {
+        calcStartDay = joinDate.getDate();
+      }
       let calcEndDay =
         lwd && lwd.getFullYear() === year && lwd.getMonth() === month
           ? lwd.getDate()
@@ -263,10 +278,14 @@ router.post('/generate', async (req, res) => {
       };
     });
 
-    // Delete existing payroll for this month and insert fresh
-    await supabase.from('payroll').delete().eq('billing_month', selectedMonth);
-    if (newPayrolls.length > 0) {
-      await supabase.from('payroll').insert(newPayrolls);
+    });
+
+    // Filter out $0 payrolls if we already generated up to today to prevent spamming empty rows
+    const validPayrolls = newPayrolls.filter(p => p.calculated_salary > 0 || !lastPaidDate[p.employee_id]);
+
+    // Insert incremental payroll records
+    if (validPayrolls.length > 0) {
+      await supabase.from('payroll').insert(validPayrolls);
     }
 
     res.json({ message: 'Payroll generated successfully' });

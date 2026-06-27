@@ -74,23 +74,90 @@ class _HRPayrollScreenState extends State<HRPayrollScreen> {
       final proceed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Generate current month?'),
-          content: Text('This month is not over yet. Salaries will be pro-rated up to today (${now.day} days).'),
+          backgroundColor: const Color(0xFF1E293B),
+          title: const Text('Generate current month?', style: TextStyle(color: Colors.white)),
+          content: Text('This month is not over yet. Salaries will be pro-rated up to today (${now.day} days).', style: const TextStyle(color: Colors.white70)),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Generate')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Proceed')),
           ],
         ),
       );
       if (proceed != true) return;
     }
 
+    // Fetch employees for dropdown
+    List<dynamic> employees = [];
+    try {
+      final res = await _api.get('/admin/employees');
+      employees = res['employees'] ?? [];
+    } catch (_) {}
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) {
+        String mode = 'all';
+        String? empId = employees.isNotEmpty ? employees.first['id'] : null;
+        return StatefulBuilder(
+          builder: (context, setS) => AlertDialog(
+            backgroundColor: const Color(0xFF1E293B),
+            title: const Text('Generate Payroll For', style: TextStyle(color: Colors.white)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                RadioListTile(
+                  title: const Text('All Employees', style: TextStyle(color: Colors.white)),
+                  value: 'all',
+                  groupValue: mode,
+                  onChanged: (v) => setS(() => mode = v.toString()),
+                  activeColor: Colors.blueAccent,
+                ),
+                RadioListTile(
+                  title: const Text('Single Employee', style: TextStyle(color: Colors.white)),
+                  value: 'single',
+                  groupValue: mode,
+                  onChanged: (v) => setS(() => mode = v.toString()),
+                  activeColor: Colors.blueAccent,
+                ),
+                if (mode == 'single' && employees.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16.0),
+                    child: DropdownButtonFormField<String>(
+                      value: empId,
+                      dropdownColor: const Color(0xFF1E293B),
+                      style: const TextStyle(color: Colors.white),
+                      items: employees.map((e) => DropdownMenuItem(value: e['id'].toString(), child: Text(e['full_name'] ?? 'Unknown'))).toList(),
+                      onChanged: (v) => setS(() => empId = v),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, {'mode': mode, 'employeeId': empId}), 
+                child: const Text('Generate')
+              ),
+            ],
+          )
+        );
+      }
+    );
+
+    if (result == null) return;
+
     setState(() => _isGenerating = true);
     try {
-      await _api.post('/payroll/generate', {
+      final body = <String, dynamic>{
         'selectedMonth': _selectedMonth,
         'allowances': _allowances,
-      });
+      };
+      if (result['mode'] == 'single' && result['employeeId'] != null) {
+        body['employeeId'] = result['employeeId'];
+      }
+      
+      await _api.post('/payroll/generate', body);
       await _loadPayroll();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payroll generated successfully.')));
@@ -214,6 +281,7 @@ class _HRPayrollScreenState extends State<HRPayrollScreen> {
     final deductions = ((item['tax_deduction'] ?? 0) as num) + ((item['pf_deduction'] ?? 0) as num) + ((item['lop_deduction'] ?? 0) as num);
     final net = (item['net_salary'] ?? (gross - deductions)) as num;
     final profile = item['profiles'] ?? {};
+    final String generatedDate = item['created_at'] != null ? DateFormat('MMM dd, yyyy - HH:mm').format(DateTime.parse(item['created_at']).toLocal()) : 'Unknown Date';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -241,7 +309,7 @@ class _HRPayrollScreenState extends State<HRPayrollScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(profile['full_name'] ?? 'Unknown', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                    Text('Employee ID: ${profile['id']?.toString().substring(0,8) ?? 'N/A'}', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+                    Text('Disbursed: $generatedDate', style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),

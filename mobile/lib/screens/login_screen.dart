@@ -16,6 +16,25 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  String _orgName = 'HR CONNECT';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSettings();
+  }
+
+  Future<void> _fetchSettings() async {
+    try {
+      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/admin/settings'));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['orgName'] != null && mounted) {
+          setState(() => _orgName = data['orgName'].toString().toUpperCase());
+        }
+      }
+    } catch (_) {}
+  }
 
   Future<void> _login() async {
     setState(() => _isLoading = true);
@@ -114,9 +133,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 40),
-                    const Text(
-                      'HR CONNECT',
-                      style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 4, color: Colors.white),
+                    Text(
+                      _orgName,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 4, color: Colors.white),
                     ),
                     const SizedBox(height: 8),
                     Text(

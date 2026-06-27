@@ -31,6 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<dynamic> _alerts = [];
   
   // Employee stats
+  String _shiftState = 'not_started';
   int _casualLeaves = 0;
   int _sickLeaves = 0;
   double _lopAmount = 0.0;
@@ -58,6 +59,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // 1. Fetch employee stats & registration
       final stats = await _api.get('/employee/$userId/stats');
       _isRegistered = stats['isRegistered'] ?? false;
+      _shiftState = stats['shiftState'] ?? 'not_started';
       _casualLeaves = stats['casualLeaves'] ?? 0;
       _sickLeaves = stats['sickLeaves'] ?? 0;
       _lopAmount = (stats['lopAmount'] ?? 0).toDouble();
@@ -332,6 +334,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<Widget> _buildEmployeeStatsSection() {
     return [
+      if (_shiftState != 'not_started') ...[
+        _buildTodayAttendanceCard(),
+        const SizedBox(height: 40),
+      ],
       const Text("PERSONAL ANALYTICS", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1.5)),
       const SizedBox(height: 16),
       Row(
@@ -369,6 +375,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
         ],
       ),
+    );
+  }
+
+  Widget _buildTodayAttendanceCard() {
+    if (_attendanceHistory.isEmpty) return const SizedBox.shrink();
+    
+    final todayStr = DateTime.now().toIso8601String().split('T')[0];
+    final todayRecord = _attendanceHistory.firstWhere((record) {
+      final recordDate = record['created_at'].toString().split('T')[0];
+      return recordDate == todayStr;
+    }, orElse: () => null);
+
+    if (todayRecord == null) return const SizedBox.shrink();
+
+    final clockIn = todayRecord['clock_in'] != null ? formatTime(todayRecord['clock_in']) : '--:--';
+    final breakHrs = todayRecord['total_break_duration'] ?? 0.0;
+    
+    final int breakMinutes = (breakHrs * 60).toInt();
+    final String breakFormatted = '${breakMinutes ~/ 60}h ${breakMinutes % 60}m';
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(color: const Color(0xFF6366F1).withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))
+        ]
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("TODAY'S ATTENDANCE", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildMiniStat('Status', _shiftState.toUpperCase().replaceAll('_', ' '), Colors.blueAccent),
+              _buildMiniStat('Clock In', clockIn, Colors.greenAccent),
+              _buildMiniStat('Total Break', breakFormatted, Colors.orangeAccent),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniStat(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w900)),
+      ],
     );
   }
 
